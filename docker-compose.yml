@@ -1,0 +1,25 @@
+services:
+  mongo:
+    container_name: ${APP_NAME:?APP_NAME must be set}
+    image: ${IMAGE:?IMAGE must be set}
+    restart: unless-stopped
+    pull_policy: missing
+    command:
+      - --auth
+      - --bind_ip_all
+      - --wiredTigerCacheSizeGB=2
+      - --wiredTigerCollectionBlockCompressor=zstd
+      - --syncdelay=300
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    ports:
+      - "${HOST_PORT:?HOST_PORT must be set}:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:?MONGO_ROOT_USERNAME must be set}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?MONGO_ROOT_PASSWORD must be set}
+    volumes:
+      - ${DATA_DIR:?DATA_DIR must be set}/db:/data/db
+      - ${DATA_DIR:?DATA_DIR must be set}/configdb:/data/configdb

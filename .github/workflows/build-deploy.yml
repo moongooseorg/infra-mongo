@@ -1,0 +1,41 @@
+name: Deploy
+
+env:
+  TARGET_IP: 192.168.1.10
+  APP_NAME: ${{ github.event.repository.name }}
+  HOST_PORT: 27017
+  MONGO_IMAGE: mongo:8
+  SSD_MOUNT: /mnt/ssd
+  DATA_DIR: /mnt/ssd/mongo
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: [self-hosted]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pull image on runner
+        run: docker pull --platform linux/arm64 ${{ env.MONGO_IMAGE }}
+
+      - name: Deploy to target Pi
+        env:
+          IMAGE: ${{ env.MONGO_IMAGE }}
+          APP_DIR: /home/runner/apps/${{ env.APP_NAME }}
+          SSH: ssh -o StrictHostKeyChecking=accept-new -i /home/runner/.ssh/deploy_key runner@${{ env.TARGET_IP }}
+          MONGO_ROOT_USERNAME: ${{ secrets.MONGO_ROOT_USERNAME }}
+          MONGO_ROOT_PASSWORD: ${{ secrets.MONGO_ROOT_PASSWORD }}
+        run: |
+          $SSH "mountpoint -q '${{ env.SSD_MOUNT }}'" || { echo "::error::${{ env.SSD_MOUNT }} is not mounted on ${{ env.TARGET_IP }}"; exit 1; }
+          $SSH "test -d '${{ env.DATA_DIR }}/db' && test -d '${{ env.DATA_DIR }}/configdb'" || { echo "::error::${{ env.DATA_DIR }}/db or configdb missing on ${{ env.TARGET_IP }}"; exit 1; }
+          docker save "$IMAGE" | $SSH docker load
+          $SSH "mkdir -p '$APP_DIR'"
+          $SSH "cat > '$APP_DIR/docker-compose.yml'" < docker-compose.yml
+          $SSH "cd '$APP_DIR' && IMAGE='$IMAGE' HOST_PORT='${{ env.HOST_PORT }}' APP_NAME='${{ env.APP_NAME }}' DATA_DIR='${{ env.DATA_DIR }}' MONGO_ROOT_USERNAME='$MONGO_ROOT_USERNAME' MONGO_ROOT_PASSWORD='$MONGO_ROOT_PASSWORD' docker compose up -d"
